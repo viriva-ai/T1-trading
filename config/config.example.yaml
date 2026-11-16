@@ -1,0 +1,71 @@
+# T1 configuration. Copy to config/config.yaml (git-ignored) and edit.
+# Secrets never go here: KITE_API_KEY / KITE_API_SECRET come from the environment (.env), the daily token from token_file.
+
+mode: paper                    # paper | live
+live_trading_enabled: false    # must be true AND mode: live AND --live AND the confirm phrase for real orders
+capital: 1000000               # paper book starting capital (Rs)
+paper_inception: "2026-11-20"  # first decision week of the paper book (a Friday rebalance close; first fills next session)
+
+paths:                         # all outside the repo; ~ and $VARS are expanded
+  data_dir: ~/t1-data          # raw NSE files, panel, market inputs (~2-3 GB after bootstrap)
+  state_dir: ~/t1-state        # paper book, scores, pending orders, backtests
+  models_dir: ~/t1-models      # LightGBM boosters (M4_<refit>_*.txt)
+  log_dir: ~/t1-logs
+  token_file: ~/.config/t1/kite_token.json   # chmod 600, written by scripts/kite_login.py
+
+data:
+  history_start: "2010-01-01"  # bhavcopy history (features need 52 weeks; training starts 2011)
+  mto_start: "2013-01-01"      # delivery % history used by the original model (keep for parity)
+  request_pause_s: 0.4
+
+universe:                      # eligible = point-in-time Nifty 500 member AND these filters
+  min_history_days: 260
+  min_traded_value_20d: 50000000   # 20-day median traded value >= Rs5 crore
+  min_price: 20
+
+strategy:                      # T1 rules (sealed; do not tune on the same data)
+  top_k: 10
+  invested_fraction: 0.99      # 9.9% per name
+  rebalance_every_weeks: 2
+  rebalance_anchor: "2024-10-25"   # rebalance closes: ... 6 Nov, 20 Nov, 4 Dec 2026 ...
+  rank_exit_above: 100
+  atr_weeks: 10
+  initial_stop_atr: 2.0        # initial stop = weekly close - 2 x ATR(10w)
+  trailing_stop_atr: 3.0       # trailing stop = highest weekly close - 3 x ATR(10w), raised every Friday
+  slippage: 0.001              # 0.1% per side
+  cash_buffer: 0.01
+
+model:
+  train_start: "2011-01-01"
+  score_start: "2015-01-01"
+  refit_every_weeks: 13        # next refits: 18 Dec 2026, 19 Mar 2027, ...
+  purge_weeks: 5
+  hn_min_weeks: 13
+  seeds: [7, 11, 23, 42, 101]
+  n_jobs: 4                    # LightGBM threads (Oracle A1: 4 OCPU)
+  hp_override: null            # e.g. "H1" to skip the HN choice
+
+# 20 Nov 2026 paper-book switch: real Zerodha fees (current card incl. IPFT) + liquid-fund interest on idle cash.
+fees:
+  card: zerodha_2026           # zerodha_2026 | legacy_cnc
+  intraday_reclass: true       # stop hit on the entry day -> intraday charges + speculative income
+cash:
+  earn_liquid_fund_interest: true
+  liquid_fund_scheme_code: 119568   # ABSL Liquid Fund Direct Growth (mfapi.in)
+tax:
+  slab_rate: 0.30              # interest + speculative income
+  cess: 0.04
+  ltcg_exemption: 125000
+  apply: true
+benchmark:
+  dividend_yield: 0.013        # approximates the Nifty 500 total-return index from the price index
+  index_fund_ter: 0.002
+
+execution:                     # used only by scripts/execute_orders.py
+  entry_order_type: LIMIT      # LIMIT at LTP x (1 +/- limit_buffer), or MARKET (Kite needs market_protection)
+  limit_buffer: 0.005
+  market_protection: -1        # -1 = Kite automatic protection (mandatory for API MARKET / SL-M orders)
+  stop_mode: slm_daily         # SL-M stop sell for every holding, placed each morning
+  max_order_value: 200000      # hard cap per order (Rs); raise deliberately when you scale up
+  max_orders_per_run: 25
+  tag: t1

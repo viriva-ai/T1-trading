@@ -1,0 +1,19 @@
+# T1 schedule. The VM clock must be Asia/Kolkata (sudo timedatectl set-timezone Asia/Kolkata); CRON_TZ makes it explicit.
+# Install: crontab -e  and paste (adjust the repo path).
+CRON_TZ=Asia/Kolkata
+T1=/home/ubuntu/T1-trading/deploy/run.sh
+
+# 08:50 Mon-Fri: is today's Kite login done? (token expires ~06:00 IST). Log in before 09:10 if this says expired.
+50 8 * * 1-5   $T1 kite_login.py --status
+# 09:16 Mon-Fri: next-session orders (pending exits, then entries whose open is above their stop). PAPER unless guarded live.
+16 9 * * 1-5   $T1 execute_orders.py --phase open
+# 09:25 Mon-Fri: stop-loss orders (SL-M) for every holding at its current stop. PAPER unless guarded live.
+25 9 * * 1-5   $T1 execute_orders.py --phase stops
+# 19:45 Mon-Fri: data refresh (bhavcopy/MTO publish ~18:00-19:30) + scores + paper book + tomorrow's orders.
+45 19 * * 1-5  $T1 daily_run.py --kite-check
+# 21:30 Mon-Fri: retry (idempotent; catches late NSE files)
+30 21 * * 1-5  $T1 daily_run.py
+# Friday 20:30: print the week's M4 ranking (rebalance decisions are made in daily_run on rebalance Fridays)
+30 20 * * 5    $T1 weekly_signal.py --no-refresh
+# Sunday 10:00: back up state + models (keep 8 weeks)
+0 10 * * 0     tar czf $HOME/t1-backup-$(date +\%Y\%m\%d).tgz -C $HOME t1-state t1-models && ls -1t $HOME/t1-backup-*.tgz | tail -n +9 | xargs -r rm

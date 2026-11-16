@@ -1,0 +1,36 @@
+# secrets
+.env
+*.env
+env
+*token*.json
+access_token*
+api_key*.txt
+api_secret*
+# local config
+config/config.yaml
+# data, models, state, logs (live outside the repo by default; ignored here too in case)
+/data/
+t1-data/
+t1-state/
+t1-models/
+t1-logs/
+/state/
+/models/
+/logs/
+*.log
+*.pkl
+*.parquet
+*.zip
+*.csv.gz
+!t1/resources/*.csv.gz
+*.txt.model
+M4_*.txt
+KILL
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+.ipynb_checkpoints/
