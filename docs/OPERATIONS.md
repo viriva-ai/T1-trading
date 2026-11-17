@@ -28,6 +28,21 @@
 - The HN choice uses `~/t1-models/hn_walkforward_scores.pkl`, built once by `train_model.py --bootstrap-hn`. Without it, the last recorded choice (H1) is carried forward and a warning is printed.
 - If you used `--no-auto-train`, the week is scored with the previous block, marked PROVISIONAL, and re-scored once the block exists.
 
+### Running the paper book's sealed boosters (VM setup since 17 Nov 2026)
+
+To match the research paper book, the VM uses the paper book's own block 2026-09-18 boosters instead of ones retrained on this repo's panel:
+
+```bash
+cp -a ~/t1-models ~/t1-models-vmtrained-YYYYMMDD           # keep the retrained block
+cp <sealed>/M4_20260918* ~/t1-models/ && chmod 444 ~/t1-models/M4_20260918*
+mv ~/t1-state/scores.pkl ~/t1-models-vmtrained-YYYYMMDD/   # only before paper_inception: frozen weeks are otherwise never re-scored
+.venv/bin/python scripts/daily_run.py --no-refresh         # re-scores the latest week with the swapped block
+```
+
+- Nothing overwrites an existing block: `daily_run`, `backtest.py` and `train_model.py` train only missing blocks. Only `train_model.py --force` would, and the read-only files make it fail loudly.
+- The **next refit (2026-12-18) is still trained automatically on the VM's own panel** the first time `daily_run` sees that week (Fri 18 Dec, 19:45). It writes new `M4_20261218*` files and leaves the sealed 09-18 block alone, but from then on the VM's scores come from a VM-trained model again. To stay on the paper book's models, copy its `M4_20261218*` block into `~/t1-models` (chmod 444) before that run.
+- With the sealed boosters on the VM panel, 13 Nov 2026 gives 9/10 of the paper book's top 10 (Spearman 0.983). The remaining gap is from inputs: the paper book's Yahoo prices are dividend-adjusted and raw bhavcopy is not (e.g. AJANTPHARM ex-dividend Nov 2025 / Aug 2026, ABSLAMC Jul 2025 / Jul 2026).
+
 ## Holidays and special sessions
 
 - No bhavcopy means no session. The calendar comes from the files themselves.
