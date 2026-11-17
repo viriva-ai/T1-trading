@@ -168,10 +168,10 @@ def build(D: Data, sec: dict, DP: pd.DataFrame, ext: Path, start_univ="2011-01-0
     for T, u in univ.items():
         if not u:
             continue
-        d = pd.DataFrame({k: f[k].loc[T, u] for k in STOCK})
-        d["w3_signal"] = w3.loc[T, u]
-        d["y"] = y1.loc[T, u]
-        d["y4"] = y4.loc[T, u]
+        d = pd.DataFrame({k: f[k].loc[T][u] for k in STOCK})   # row first: .loc[T, u] kept an 881 x n view alive per column (OOM on 4 GB)
+        d["w3_signal"] = w3.loc[T][u]
+        d["y"] = y1.loc[T][u]
+        d["y4"] = y4.loc[T][u]
         d["sym"] = u
         d["T"] = T
         d["sector"] = secs[u].values

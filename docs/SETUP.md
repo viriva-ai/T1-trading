@@ -1,6 +1,7 @@
 # Setup guide: a static-IP Linux VM for T1
 
 This guide sets up T1 on an Oracle Cloud Always Free VM in Mumbai or Hyderabad running Ubuntu. Any Linux server with a fixed public IP works the same way.
+It was last run end-to-end on **AWS Lightsail Mumbai, Ubuntu 22.04, 4 GB / 2 vCPU** (16 Nov 2026); see [1b](#1b-alternative-aws-lightsail-mumbai) for that route.
 Times are IST. The guide ends in **paper mode**. Going live is a separate, deliberate step: see [LIVE_TRADING.md](LIVE_TRADING.md).
 
 ## Why a static IP
@@ -20,6 +21,19 @@ Market-data calls, such as quotes and historical candles, work from any IP. Orde
    - **SSH keys:** upload your public key (`~/.ssh/id_ed25519.pub`), or let Oracle generate a pair and download it.
    - **Boot volume:** 50 GB is enough. The data is about 3 GB.
 3. Create the instance and wait until it shows **Running**.
+
+## 1b. Alternative: AWS Lightsail (Mumbai)
+
+1. Lightsail → **Create instance** → region **Mumbai (ap-south-1)** → **Linux/Unix → OS only → Ubuntu 22.04 LTS** (not an app blueprint).
+2. Plan: **4 GB RAM / 2 vCPU / 80 GB** (about $24/month). The 512 MB and 1 GB plans are too small for training.
+3. After it starts: **Networking → Attach static IP**. The public IP changes on stop/start until you do this.
+4. **Networking → Firewall:** delete the default **HTTP 80** rule and keep only **SSH 22**. T1 serves nothing.
+5. Lightsail instances are dual-stack, and Kite/NSE resolve to IPv6 first, so outbound API calls would leave from the
+   IPv6 address, not the static IPv4 you register with Zerodha. Step 3 below makes the VM prefer IPv4.
+6. Add swap so training can't be OOM-killed: `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab`.
+7. Set `model.n_jobs: 2` in `config/config.yaml` (2 vCPU).
+
+Then continue at step 3.
 
 ## 2. Reserve a static public IP
 
@@ -42,20 +56,28 @@ timedatectl                                         # confirm "Time zone: Asia/K
 sudo apt update && sudo apt -y upgrade
 sudo apt -y install python3 python3-venv python3-pip git build-essential cmake libgomp1 unattended-upgrades
 sudo dpkg-reconfigure -plow unattended-upgrades     # automatic security updates
-curl -s https://ifconfig.me ; echo                  # must print your RESERVED IP (this is the IP Kite will see)
+# dual-stack VMs (Lightsail, some Oracle VCNs): make outbound calls prefer IPv4, or Kite sees your IPv6 address
+echo 'precedence ::ffff:0:0/96  100' | sudo tee -a /etc/gai.conf
+curl -s https://ifconfig.me ; echo                  # must print your RESERVED/STATIC IPv4 (this is the IP Kite will see)
 ```
 
 Optional hardening:
-- Turn off SSH password login: `PasswordAuthentication no` in `/etc/ssh/sshd_config`, then `sudo systemctl restart ssh`.
-- `sudo apt -y install fail2ban`.
+- Turn off SSH password and root login: put `PasswordAuthentication no` and `PermitRootLogin no` in `/etc/ssh/sshd_config.d/10-hardening.conf`, then `sudo sshd -t && sudo systemctl reload ssh`. Test a fresh login before closing your session.
+- Firewall: `sudo ufw allow 22/tcp && sudo ufw --force enable`.
+- `sudo apt -y install fail2ban`. Give it room for scripted logins so you don't lock yourself out: in `/etc/fail2ban/jail.local` set `[sshd]` `enabled = true`, `maxretry = 10`, `findtime = 10m`, `bantime = 15m`, then `sudo systemctl restart fail2ban`. If you do get banned, use the provider's browser console and run `sudo fail2ban-client unban --all`.
+- Long jobs (bootstrap, `--bootstrap-hn`) should run in `tmux` so a dropped SSH session doesn't kill them; check their logs with short SSH calls instead of holding a session open.
 
 ## 4. Clone and install
+
+The pinned versions (numpy 2.5, pandas 3.1) need **Python 3.12 or newer**. Ubuntu 24.04 ships 3.12, so `python3 -m venv .venv` works there.
+On **Ubuntu 22.04** (Python 3.10), get Python 3.13 with uv instead:
+`curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uv python install 3.13`, then replace the `python3 -m venv .venv` line below with `~/.local/bin/uv venv --python 3.13 --seed .venv`.
 
 ```bash
 cd ~
 git clone https://github.com/viriva-ai/T1-trading.git
 cd T1-trading
-python3 -m venv .venv
+python3 -m venv .venv                               # needs Python >= 3.12 (see above)
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt           # lightgbm, numpy, pandas and scipy ship aarch64 wheels
 .venv/bin/python -m pytest -q                       # expect: 22 passed
@@ -71,6 +93,7 @@ nano ~/.config/t1/env        # set KITE_API_KEY and KITE_API_SECRET from develop
 ```
 
 - `deploy/run.sh`, which cron uses, loads this file automatically.
+- Optional: add `T1_LOG_DIR=/home/ubuntu/T1-trading/logs` to keep cron logs inside the repo folder (git-ignored). The default is `~/t1-logs`.
 - For an interactive shell, run `set -a; . ~/.config/t1/env; set +a`.
 - Never put the key or secret in `config.yaml`, in the repo, or in shell history.
 
@@ -108,14 +131,14 @@ Open the login URL in the laptop browser. The redirect travels through the tunne
 
 **C. From a shortcut:** `scripts/kite_login.py --url "<redirect url>"`.
 
-Check the login at any time with `scripts/kite_login.py --status`. Paper mode does not need Kite at all, because NSE public files drive it. Kite is only used for the optional close cross-check, live marks, and (later) orders.
+Check the login at any time with `scripts/kite_login.py --status`. It exits 0 when the token is valid and 3 with `TOKEN_EXPIRED` plus the login URL when it isn't, so the 08:50 cron log shows `FAILED (exit 3)` on days you still need to log in. Paper mode does not need Kite at all, because NSE public files drive it. Kite is only used for the optional close cross-check, live marks, and (later) orders.
 
 ## 8. First data download and model
 
 ```bash
 cd ~/T1-trading
 .venv/bin/python scripts/bootstrap_data.py         # NSE bhavcopy + MTO 2010→today, Yahoo/FRED/liquid NAV (1-3 h, resumable)
-.venv/bin/python scripts/train_model.py --bootstrap-hn   # one-time HN history: ~250 small fits (about 1-2 h on 4 OCPU)
+.venv/bin/python scripts/train_model.py --bootstrap-hn   # one-time HN history: 240 small fits (~26 min on Lightsail 2 vCPU / 4 GB, peak ~1.3 GB RAM)
 .venv/bin/python scripts/train_model.py            # current M4 block (5 fits, ~1 min)
 .venv/bin/python scripts/weekly_signal.py --no-refresh
 ```
@@ -158,7 +181,10 @@ crontab -e      # paste deploy/crontab.example (fix the path if your home is not
 | Sun 10:00 | backup of `~/t1-state` and `~/t1-models` |
 
 - The order jobs run in **paper** unless every live switch is on.
-- Logs go to `~/t1-logs/<job>_YYYYMMDD.log`.
+- Logs go to `$T1_LOG_DIR/<job>_YYYYMMDD.log` (default `~/t1-logs`). A non-zero exit appends `<job> FAILED (exit N)`.
+- Before the paper book's first rebalance (`paper_inception`), the 09:16/09:25 order jobs log `nothing to do` and exit 0, and `daily_run` prints the latest signal instead of a book.
+- Jobs share a non-blocking lock: if one is still running (for example a manual `--bootstrap-hn`), a cron job that starts meanwhile exits with `another T1 job is running` and the 21:30 retry catches up.
+- Install without an editor: `grep -v '^#' deploy/crontab.example | grep . | crontab - && crontab -l`.
 - Optional: set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in the env file to get the daily summary on your phone.
 
 ## 11. Backtests

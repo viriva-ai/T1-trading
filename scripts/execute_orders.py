@@ -29,6 +29,9 @@ with Lock(cfg, "exec"):
     pend = pd.read_csv(st / "pending_orders.csv") if (st / "pending_orders.csv").exists() else pd.DataFrame(columns=["action"])
     posf = pd.read_csv(st / "positions.csv") if (st / "positions.csv").exists() and (st / "positions.csv").stat().st_size > 1 else pd.DataFrame(columns=["sym", "qty", "stop", "last_close"])
     ex = make_executor(cfg, a.live, a.confirm, cfg.token_file, log)
+    if not ex.live and (pend.empty or "sym" not in pend) and posf.empty:
+        log(f"PAPER {a.phase}: nothing to do (no pending orders and no holdings; paper book not started yet?)")
+        raise SystemExit(0)
     k = None
     try:
         k = connect_read_only(cfg.token_file)

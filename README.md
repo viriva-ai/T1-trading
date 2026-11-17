@@ -53,12 +53,12 @@ cp config/config.example.yaml config/config.yaml           # paper mode, live of
 .venv/bin/python scripts/weekly_signal.py --no-refresh      # this week's ranking
 ```
 
-Full VM setup, covering Oracle Cloud in Mumbai or Hyderabad with a static IP, the Kite login and cron: **[docs/SETUP.md](docs/SETUP.md)**.
+Full VM setup, covering Oracle Cloud in Mumbai or Hyderabad or AWS Lightsail Mumbai with a static IP, the Kite login and cron: **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## Setup guide (summary; every step in full in [docs/SETUP.md](docs/SETUP.md))
 
 1. **VM.** Oracle Cloud Always Free, home region **Mumbai or Hyderabad**, Ubuntu 24.04 on `VM.Standard.A1.Flex` (2–4 OCPU, 12–24 GB). Don't use the 1 GB micro shape.
-2. **Static IP.** Networking → IP Management → *Reserve public IP*. On the instance's primary VNIC, set the public IP to *None*, then attach the reserved one. Open only port 22. Check with `curl ifconfig.me`.
+2. **Static IP.** Networking → IP Management → *Reserve public IP*. On the instance's primary VNIC, set the public IP to *None*, then attach the reserved one. Open only port 22. Check with `curl ifconfig.me` (on dual-stack VMs, prefer IPv4 first: SETUP §3).
 3. **SSH and the OS.**
    - `ssh -i key ubuntu@<IP>`
    - `sudo timedatectl set-timezone Asia/Kolkata`

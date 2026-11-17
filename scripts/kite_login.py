@@ -8,7 +8,7 @@ Option B (tunnel):  on your laptop: ssh -L 5000:127.0.0.1:5000 ubuntu@<vm-ip>   
                     python scripts/kite_login.py --listen
    After login, the redirect reaches the VM through the tunnel and the token is saved automatically.
 Option C:           python scripts/kite_login.py --url "<redirect url or request_token>"
-Check only:         python scripts/kite_login.py --status
+Check only:         python scripts/kite_login.py --status   (exit 0 = valid, 3 = TOKEN_EXPIRED, 2 = other problem)
 The token is stored chmod 600 at paths.token_file; it is never printed.
 """
 import http.server
@@ -26,8 +26,15 @@ ap.add_argument("--status", action="store_true")
 a = ap.parse_args()
 cfg = load_cfg(a)
 if a.status:
-    log(f"Kite token: {kite.token_status(cfg.token_file)}")
-    raise SystemExit(0)
+    st = kite.token_status(cfg.token_file)
+    if st == "valid":
+        log("Kite token: valid")
+        raise SystemExit(0)
+    if st.startswith("expired"):
+        log(f"TOKEN_EXPIRED: {st}. Log in before 09:10 IST: {kite.login_url()}")
+        raise SystemExit(3)
+    log(f"Kite token: {st}")
+    raise SystemExit(2)
 print("Log in here (redirect URL in the Kite app must be http://127.0.0.1:%d/callback):\n  %s\n" % (a.port, kite.login_url()))
 if a.url:
     text = a.url

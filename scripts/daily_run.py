@@ -64,4 +64,6 @@ with Lock(cfg):
                 nc = D.C.at[last, x]
                 log(f"  kite-check {x}: NSE close {nc:.2f} vs Kite {kc}")
         except TokenExpired as e:
+            log(f"kite-check skipped: TOKEN_EXPIRED ({e})")
+        except RuntimeError as e:   # Kite down or network error: the paper book is already written, so don't fail the run
             log(f"kite-check skipped: {e}")

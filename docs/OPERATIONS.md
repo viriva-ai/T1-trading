@@ -39,11 +39,11 @@
 | Symptom | Fix |
 |---|---|
 | `missing(http 403)` for NSE days | NSE throttling. Wait, then re-run (downloads resume). Avoid running bootstrap from several machines. |
-| `TOKEN_EXPIRED` / `Kite session expired` | Log in again. Tokens last until about 06:00 IST the next day. |
+| `TOKEN_EXPIRED` / `Kite session expired` (`kite_login.py --status` exits 3) | Log in again. Tokens last until about 06:00 IST the next day. |
 | `REFIT DUE` | Run `scripts/train_model.py`. |
 | `PROVISIONAL` week | An input source failed or MTO is missing for the decision day. The next run re-scores it. |
 | Yahoo FAILED | Cached files are used. If it persists more than 2 days, `pip install -U yfinance`. |
-| Order rejected: IP not allowed | The VM's egress IP (`curl ifconfig.me`) must equal the IP registered in the Kite console. |
+| Order rejected: IP not allowed | The VM's egress IP (`curl ifconfig.me`) must equal the IP registered in the Kite console. If it prints an IPv6 address, prefer IPv4 (SETUP §3). |
 | Order rejected: market protection | Keep `execution.market_protection: -1` (required by Kite for API MARKET and SL-M orders). |
 
 ## Backups
