@@ -56,3 +56,22 @@ Keep `mode: paper` and run the following on a trading morning after logging in:
 .venv/bin/python scripts/execute_orders.py --phase stops
 ```
 Compare `~/t1-state/paper_orders_YYYYMMDD.csv` with what you would expect from `pending_orders.csv`.
+
+## One-share live order test (`scripts/live_oneshare.py`)
+
+A separate, guarded path to prove real orders work from the static IP before any real T1 money. It does not read or
+change `live_trading_enabled` (that stays false). Default is a dry run.
+
+- Hard limits (constants in `t1/execution/live_test.py`): 1 share, NSE EQ, CNC, LIMIT within 0.5% of LTP, value <= Rs500,
+  one BUY and one SELL per IST day (state file written before sending), kill files `~/t1-state/KILL` or
+  `~/t1-state/live_test/KILL_ONESHARE`, 09:15-15:20 IST for BUY (15:30 for SELL) on an NSE trading day
+  (`t1/resources/nse_holidays.json`; unknown year = refuse), public IP must be 13.233.202.137,
+  and `--confirm-live <SIDE>-<SYMBOL>-1-<YYYYMMDD>` for today.
+- Pre-checks (read-only): profile (NSE + CNC enabled), instrument is a single NSE EQ, quote (LTP, circuit band,
+  opposite-side depth), cash for a BUY, today's CNC position for a SELL.
+- An unfilled BUY is cancelled after `--poll-seconds` (60). A SELL is allowed only after this script's BUY is COMPLETE
+  the same day.
+- Sell the same day: Zerodha treats a same-day CNC buy+sell as intraday (brokerage 0.03% capped Rs20 per order,
+  STT 0.025% on the sell, stamp 0.003%, no DP charge), about Rs0.3 for a Rs300 share. Selling on a later day costs about
+  Rs16 (STT 0.1% both sides plus the Rs15.34 DP charge) and needs CDSL TPIN/eDIS authorisation for API sells.
+- Logs: `logs/live_test/oneshare_YYYYMMDD.jsonl` (every Kite response, secrets redacted).
